@@ -1,0 +1,31 @@
+# Java / Maven
+target/
+*.class
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Logs
+*.log
+
+# Dados gerados em tempo de execucao (logs de eventos das agencias)
+agencia/data/*.jsonl
+
+# Frontend (Parte G)
+node_modules/
+dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
