@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 import br.pucminas.iceibank.agencia.service.EventLogService;
 
 @Service
@@ -17,8 +18,8 @@ public class EventLogServiceImpl implements EventLogService {
     private final String nomeAgencia;
     private final Path caminhoArquivo;
 
-    public EventLogServiceImpl(String nomeAgencia) throws IOException {
-        this.nomeAgencia = nomeAgencia;
+    public EventLogServiceImpl(AgenciaProperties agenciaProperties) throws IOException {
+        this.nomeAgencia = "agencia-" + agenciaProperties.getId();
         Path pastaDados = Paths.get("data");
         Files.createDirectories(pastaDados);
         this.caminhoArquivo = pastaDados.resolve("eventos-" + nomeAgencia + ".jsonl");

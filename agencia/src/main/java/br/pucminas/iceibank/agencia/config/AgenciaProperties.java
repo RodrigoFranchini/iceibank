@@ -3,6 +3,8 @@ package br.pucminas.iceibank.agencia.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+// Classe criada pela IA para guardar a identidade desta agencia e a regra de particionamento das contas entre as agencias do ICEIBank, equivalente ao config.js do roteiro.
+
 /**
  * Equivalente ao config.js do roteiro: guarda a identidade desta agencia e a
  * regra de particionamento das contas entre as agencias do ICEIBank.
