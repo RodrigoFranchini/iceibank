@@ -1,7 +1,6 @@
 package br.pucminas.iceibank.agencia.controllers;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -17,6 +16,7 @@ import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 import br.pucminas.iceibank.agencia.entities.Conta;
 import br.pucminas.iceibank.agencia.service.EventLogService;
 import br.pucminas.iceibank.agencia.service.LamportClockService;
+import br.pucminas.iceibank.agencia.store.ContaStore;
 
 @RestController
 @RequestMapping("/contas")
@@ -25,14 +25,16 @@ public class ContasController {
     private final AgenciaProperties agenciaProperties;
     private final LamportClockService relogio;
     private final EventLogService registro;
-    private final Map<Integer, Conta> contas = new HashMap<>();
+    private final Map<Integer, Conta> contas;
 
     public ContasController(AgenciaProperties agenciaProperties,
                              LamportClockService relogio,
-                             EventLogService registro) {
+                             EventLogService registro,
+                             ContaStore contaStore) {
         this.agenciaProperties = agenciaProperties;
         this.relogio = relogio;
         this.registro = registro;
+        this.contas = contaStore.getContas();
     }
 
     @PostMapping
