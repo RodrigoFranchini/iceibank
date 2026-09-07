@@ -11,3 +11,13 @@
 1. O relógio local só precisa de chamar a função eventoLocal() que já garante a ordem. Entre agências, cada um tem relógio próprio e precisa escutar o relógio das demais para registrar o timestamp da operação.
 2. Não, isso quebra o esperado de uma transação bancária, o dinheiro some do sistema.
 3. A agência só garantir a operação quando ela foi validada nas demais ou estorno pro cliente se a operação não concluir.
+
+### 10.2 Parte 3
+
+- Concorrentes, não há comunicação entre as agências direta. A ordem do campo horaParede não bate com Lamport que seria 0 -> 1 -> 2, mas aparece 1 primeiro.
+
+### Parte E
+
+1. ?
+2. Não é suficiente, Lamport não distingue A concorrente de B ou A antes de B quando os timestamp diferem.
+
