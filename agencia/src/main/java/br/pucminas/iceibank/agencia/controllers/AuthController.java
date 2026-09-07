@@ -24,6 +24,8 @@ public class AuthController {
         this.jwtService = jwtService;
     }
 
+    // Realiza login + gera token JWT
+    // TOKEN=$(curl -s -X POST http://localhost:4000/auth/login -H "Content-Type: application/json" -d '{"usuario":"admin","senha":"admin123"}' | python3 -c "import json,sys;print(json.load(sys.stdin)['token'])")
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, Object> corpo) {
         String usuario = (String) corpo.get("usuario");

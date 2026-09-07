@@ -1,3 +1,5 @@
+// Interface gerada com uso de inteligência artificial.
+
 import { useState, type FormEvent } from "react";
 import "./App.css";
 

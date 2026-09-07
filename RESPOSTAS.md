@@ -21,3 +21,14 @@
 1. ?
 2. Não é suficiente, Lamport não distingue A concorrente de B ou A antes de B quando os timestamp diferem.
 
+### Parte F
+
+1. Autenticação responde quem é o usuário no sistema. Autorização da acesso ao usuário no sistema. Um usuário com um token de outro usuário consegue acesso em um sistema sem autorização, pois não existe sistema de dono da conta.
+2. O sistema fica mais escalável sem ter que validar toda requisição com uma busca no banco de dados, podendo consultar a chave secreta sem precisar consultar nenhum outro registro.
+3. Qualquer pessoa consegue forjar o token e acessar a agência.
+
+### Parte G
+
+1. Salva no localStorage do browser.
+2. O usuário ve a mensagem de token expirado.
+3. Model é a conta, View o jsx etornado e Controller é as funções. Porém não há separação em camadas

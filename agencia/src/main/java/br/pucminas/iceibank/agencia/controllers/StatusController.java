@@ -22,14 +22,13 @@ public class StatusController {
         this.contaStore = contaStore;
     }
 
-    // login, retorna token
-    // curl -s -X POST http://localhost:4000/auth/login -H "Content-Type: application/json" -d '{"usuario":"admin","senha":"admin123"}'
-    // curl -s -w "\nSTATUS:%{http_code}\n" http://localhost:4000/status -H "Authorization: Bearer SEU_TOKEN"
+    // /health publico
     @GetMapping("/health")
     public Map<String, Object> health() {
         return Map.of("idAgencia", agenciaProperties.getId(), "status", "UP");
     }
 
+    // curl -s http://localhost:4000/status -H "Authorization: Bearer $TOKEN"
     @GetMapping("/status")
     public Map<String, Object> status() {
         return Map.of(
