@@ -29,4 +29,9 @@ public class LamportClockServiceImpl implements LamportClockService {
         contador = Math.max(contador, timestampRecebido) + 1;
         return contador;
     }
+
+    @Override
+    public synchronized int contadorAtual() {
+        return contador;
+    }
 }

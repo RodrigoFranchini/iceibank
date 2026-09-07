@@ -10,4 +10,7 @@ public interface LamportClockService {
 
     // Incrementa o contador ao receber um evento de outro processo, retornando o contador atualizado.
     int aoReceber(int timestampRecebido);
+
+    // Le o valor atual do contador, sem incrementar.
+    int contadorAtual();
 }
