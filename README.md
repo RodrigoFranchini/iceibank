@@ -88,6 +88,6 @@ eventos.
 ## Nota de transparência: uso de IA
 
 Assim como previsto no roteiro, ferramentas de IA foram utilizadas neste
-sprint, de forma responsável, para apoiar a revisão de código e a geração de
-alguns arquivos. Quando a IA foi usada para criar código diretamente, o
+sprint, de forma responsável, para apoiar a revisão de código, geração de
+alguns arquivos e documentação. Quando a IA foi usada para criar código diretamente, o
 arquivo correspondente traz um comentário declarando esse uso. 
