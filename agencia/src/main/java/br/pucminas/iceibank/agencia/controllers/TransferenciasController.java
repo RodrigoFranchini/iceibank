@@ -1,6 +1,7 @@
 package br.pucminas.iceibank.agencia.controllers;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -15,7 +16,7 @@ import org.springframework.web.client.RestTemplate;
 import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 import br.pucminas.iceibank.agencia.entities.Conta;
 import br.pucminas.iceibank.agencia.service.EventLogService;
-import br.pucminas.iceibank.agencia.service.LamportClockService;
+import br.pucminas.iceibank.agencia.service.RelogioVetorial;
 import br.pucminas.iceibank.agencia.store.ContaStore;
 
 @RestController
@@ -23,13 +24,13 @@ public class TransferenciasController {
 
     private final Map<Integer, Conta> contas;
     private final AgenciaProperties agenciaProperties;
-    private final LamportClockService relogio;
+    private final RelogioVetorial relogio;
     private final EventLogService registro;
     private final RestTemplate restTemplate = new RestTemplate();
 
     public TransferenciasController(ContaStore contaStore,
                                      AgenciaProperties agenciaProperties,
-                                     LamportClockService relogio,
+                                     RelogioVetorial relogio,
                                      EventLogService registro) {
         this.contas = contaStore.getContas();
         this.agenciaProperties = agenciaProperties;
@@ -56,7 +57,7 @@ public class TransferenciasController {
         int agenciaDestino = agenciaProperties.agenciaResponsavel(idDestino);
 
         // O debito e sempre local, pois esta agencia e a dona da conta de origem
-        int tsDebito = relogio.eventoLocal();
+        int[] tsDebito = relogio.eventoLocal();
         contaOrigem.setSaldo(contaOrigem.getSaldo() - valor);
         registro.registrar("TRANSFERENCIA_DEBITO", tsDebito, Map.of(
                 "idOrigem", idOrigem,
@@ -71,7 +72,7 @@ public class TransferenciasController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("erro", "Conta de destino não encontrada."));
             }
-            int tsCredito = relogio.eventoLocal();
+            int[] tsCredito = relogio.eventoLocal();
             contaDestino.setSaldo(contaDestino.getSaldo() + valor);
             registro.registrar("TRANSFERENCIA_CREDITO", tsCredito, Map.of(
                     "idOrigem", idOrigem,
@@ -81,12 +82,12 @@ public class TransferenciasController {
         }
 
         // Caso entre agencias: chama a agencia de destino diretamente via REST
-        int tsEnvio = relogio.aoEnviar();
+        int[] tsEnvio = relogio.aoEnviar();
         String urlDestino = agenciaProperties.urlDaAgencia(agenciaDestino);
         try {
             Map<String, Object> payload = Map.of(
                     "valor", valor,
-                    "timestampLamport", tsEnvio,
+                    "vetorEnvio", tsEnvio,
                     "origemAgencia", agenciaProperties.getId());
             restTemplate.postForEntity(urlDestino + "/contas/" + idDestino + "/creditar-remoto", payload, Void.class);
             return ResponseEntity.ok(Map.of("mensagem", "Transferência concluída (entre agências)."));
@@ -105,15 +106,16 @@ public class TransferenciasController {
         }
     }
 
+    @SuppressWarnings("unchecked")
     @PostMapping("/contas/{id}/creditar-remoto")
     public ResponseEntity<?> creditarRemoto(@PathVariable("id") int idConta, @RequestBody Map<String, Object> corpo) throws IOException {
         double valor = ((Number) corpo.get("valor")).doubleValue();
-        int timestampLamport = ((Number) corpo.get("timestampLamport")).intValue();
+        List<Number> vetorRecebido = (List<Number>) corpo.get("vetorEnvio");
         int origemAgencia = ((Number) corpo.get("origemAgencia")).intValue();
 
-        // Ao RECEBER uma mensagem de outra agencia, o relogio de Lamport e
-        // atualizado com base no timestamp recebido - e a regra 3 do algoritmo.
-        int ts = relogio.aoReceber(timestampLamport);
+        // Ao RECEBER uma mensagem de outra agencia, o relogio vetorial faz o max
+        // posicao a posicao com o vetor recebido - e a regra 3 do algoritmo.
+        int[] ts = relogio.aoReceber(vetorRecebido.stream().mapToInt(Number::intValue).toArray());
 
         Conta conta = contas.get(idConta);
         if (conta == null) {

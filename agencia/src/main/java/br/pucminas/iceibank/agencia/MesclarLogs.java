@@ -13,8 +13,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Equivalente ao mesclar-logs.js do roteiro: le os .jsonl de todas as
- * agencias em data/ e monta uma unica linha do tempo, ordenada por relogio
- * de Lamport.
+ * agencias em data/ e monta uma unica linha do tempo, ordenada pela hora de
+ * parede e exibindo o relogio vetorial de cada evento.
+ *
+ * Relogio vetorial nao define ordem total (eventos concorrentes nao tem
+ * "antes" nem "depois"), por isso a ordenacao para exibicao usa horaParede.
  *
  * Executar (a partir da pasta agencia/, depois de gerar eventos com as
  * agencias rodando):
@@ -28,7 +31,7 @@ public class MesclarLogs {
 
         List<Map<String, Object>> todosEventos = new ArrayList<>();
 
-        try (DirectoryStream<Path> arquivos = Files.newDirectoryStream(pastaDados, "*.jsonl")) {
+        try (DirectoryStream<Path> arquivos = Files.newDirectoryStream(pastaDados, "eventos-agencia-*.jsonl")) {
             for (Path arquivo : arquivos) {
                 for (String linha : Files.readAllLines(arquivo)) {
                     if (!linha.isBlank()) {
@@ -38,13 +41,13 @@ public class MesclarLogs {
             }
         }
 
-        todosEventos.sort(Comparator.comparingInt(e -> ((Number) e.get("timestampLamport")).intValue()));
+        todosEventos.sort(Comparator.comparing(e -> (String) e.get("horaParede")));
 
-        System.out.println("=== Linha do tempo unificada (ordenada por relogio de Lamport) ===");
+        System.out.println("=== Linha do tempo unificada (ordenada por hora de parede) ===");
         for (Map<String, Object> evento : todosEventos) {
             System.out.println(String.format(
-                    "[Lamport %s] (%s) %s - %s %s",
-                    evento.get("timestampLamport"),
+                    "%s (%s) %s - %s %s",
+                    evento.get("timestampVetorial"),
                     evento.get("horaParede"),
                     evento.get("agencia"),
                     evento.get("tipo"),

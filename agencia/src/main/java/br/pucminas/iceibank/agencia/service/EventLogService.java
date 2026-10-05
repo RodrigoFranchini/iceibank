@@ -5,5 +5,5 @@ import java.io.IOException;
 
 public interface EventLogService {
 
-    Map<String, Object> registrar(String tipo, int timestampLamport, Map<String, Object> detalhes) throws IOException;
+    Map<String, Object> registrar(String tipo, int[] timestampVetorial, Map<String, Object> detalhes) throws IOException;
 }

@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 import br.pucminas.iceibank.agencia.entities.Conta;
 import br.pucminas.iceibank.agencia.service.EventLogService;
-import br.pucminas.iceibank.agencia.service.LamportClockService;
+import br.pucminas.iceibank.agencia.service.RelogioVetorial;
 import br.pucminas.iceibank.agencia.store.ContaStore;
 
 @RestController
@@ -23,12 +23,12 @@ import br.pucminas.iceibank.agencia.store.ContaStore;
 public class ContasController {
 
     private final AgenciaProperties agenciaProperties;
-    private final LamportClockService relogio;
+    private final RelogioVetorial relogio;
     private final EventLogService registro;
     private final Map<Integer, Conta> contas;
 
     public ContasController(AgenciaProperties agenciaProperties,
-                             LamportClockService relogio,
+                             RelogioVetorial relogio,
                              EventLogService registro,
                              ContaStore contaStore) {
         this.agenciaProperties = agenciaProperties;
@@ -52,7 +52,7 @@ public class ContasController {
                     .body(Map.of("erro", "Conta já existe."));
         }
 
-        int ts = relogio.eventoLocal();
+        int[] ts = relogio.eventoLocal();
         Conta conta = new Conta();
         conta.setId(id);
         conta.setNomeAluno(nomeAluno);
@@ -86,7 +86,7 @@ public class ContasController {
         }
         double valor = ((Number) corpo.get("valor")).doubleValue();
 
-        int ts = relogio.eventoLocal();
+        int[] ts = relogio.eventoLocal();
         conta.setSaldo(conta.getSaldo() + valor);
 
         registro.registrar("DEPOSITO", ts, Map.of(
@@ -110,7 +110,7 @@ public class ContasController {
                     .body(Map.of("erro", "Saldo insuficiente."));
         }
 
-        int ts = relogio.eventoLocal();
+        int[] ts = relogio.eventoLocal();
         conta.setSaldo(conta.getSaldo() - valor);
 
         registro.registrar("SAQUE", ts, Map.of(

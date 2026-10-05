@@ -6,17 +6,17 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import br.pucminas.iceibank.agencia.config.AgenciaProperties;
-import br.pucminas.iceibank.agencia.service.LamportClockService;
+import br.pucminas.iceibank.agencia.service.RelogioVetorial;
 import br.pucminas.iceibank.agencia.store.ContaStore;
 
 @RestController
 public class StatusController {
 
     private final AgenciaProperties agenciaProperties;
-    private final LamportClockService relogio;
+    private final RelogioVetorial relogio;
     private final ContaStore contaStore;
 
-    public StatusController(AgenciaProperties agenciaProperties, LamportClockService relogio, ContaStore contaStore) {
+    public StatusController(AgenciaProperties agenciaProperties, RelogioVetorial relogio, ContaStore contaStore) {
         this.agenciaProperties = agenciaProperties;
         this.relogio = relogio;
         this.contaStore = contaStore;
@@ -32,7 +32,7 @@ public class StatusController {
     @GetMapping("/status")
     public Map<String, Object> status() {
         return Map.of(
-                "contadorLamport", relogio.contadorAtual(),
+                "relogioVetorial", relogio.vetorAtual(),
                 "quantidadeContas", contaStore.getContas().size());
     }
 }
