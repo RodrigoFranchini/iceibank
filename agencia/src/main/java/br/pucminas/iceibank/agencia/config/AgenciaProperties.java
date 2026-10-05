@@ -42,11 +42,6 @@ public class AgenciaProperties {
         return PORTA_BASE_PADRAO + offset + idAgencia;
     }
 
-    /** URL base da agencia informada, usada nas chamadas entre agencias. */
-    public String urlDaAgencia(int idAgencia) {
-        return "http://localhost:" + portaDaAgencia(idAgencia);
-    }
-
     public int getOffset() {
         return offset;
     }

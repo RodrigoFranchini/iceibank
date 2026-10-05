@@ -51,8 +51,7 @@ public class JwtAutenticacaoFilter extends OncePerRequestFilter {
     }
 
     private boolean rotaPublica(String caminho) {
-        return caminho.equals("/auth/login") || caminho.equals("/health")
-                || caminho.matches("/contas/\\d+/creditar-remoto");
+        return caminho.equals("/auth/login") || caminho.equals("/health");
     }
 
     private void responderNaoAutorizado(HttpServletResponse resposta, String mensagem) throws IOException {

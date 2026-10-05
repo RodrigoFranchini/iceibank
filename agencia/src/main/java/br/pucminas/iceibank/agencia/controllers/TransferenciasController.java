@@ -1,20 +1,19 @@
 package br.pucminas.iceibank.agencia.controllers;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 
+import org.springframework.amqp.AmqpException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 
 import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 import br.pucminas.iceibank.agencia.entities.Conta;
+import br.pucminas.iceibank.agencia.messaging.CreditoRemotoMessage;
+import br.pucminas.iceibank.agencia.messaging.MensageriaService;
 import br.pucminas.iceibank.agencia.service.EventLogService;
 import br.pucminas.iceibank.agencia.service.RelogioVetorial;
 import br.pucminas.iceibank.agencia.store.ContaStore;
@@ -26,16 +25,18 @@ public class TransferenciasController {
     private final AgenciaProperties agenciaProperties;
     private final RelogioVetorial relogio;
     private final EventLogService registro;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final MensageriaService mensageria;
 
     public TransferenciasController(ContaStore contaStore,
                                      AgenciaProperties agenciaProperties,
                                      RelogioVetorial relogio,
-                                     EventLogService registro) {
+                                     EventLogService registro,
+                                     MensageriaService mensageria) {
         this.contas = contaStore.getContas();
         this.agenciaProperties = agenciaProperties;
         this.relogio = relogio;
         this.registro = registro;
+        this.mensageria = mensageria;
     }
 
     @PostMapping("/transferencias")
@@ -81,20 +82,21 @@ public class TransferenciasController {
             return ResponseEntity.ok(Map.of("mensagem", "Transferência concluída (mesma agência)."));
         }
 
-        // Caso entre agencias: chama a agencia de destino diretamente via REST
-        int[] tsEnvio = relogio.aoEnviar();
-        String urlDestino = agenciaProperties.urlDaAgencia(agenciaDestino);
+        // Caso entre agencias: publica um pedido de credito na exchange. A agencia
+        // de destino consome da propria fila quando puder (comunicacao indireta),
+        // entao o 200 aqui significa "mensagem publicada", nao "credito aplicado".
+        int[] vetorEnvio = relogio.aoEnviar();
+        String routingKey = "agencia." + agenciaDestino + ".creditar";
         try {
-            Map<String, Object> payload = Map.of(
-                    "valor", valor,
-                    "vetorEnvio", tsEnvio,
-                    "origemAgencia", agenciaProperties.getId());
-            restTemplate.postForEntity(urlDestino + "/contas/" + idDestino + "/creditar-remoto", payload, Void.class);
-            return ResponseEntity.ok(Map.of("mensagem", "Transferência concluída (entre agências)."));
-        } catch (RestClientException erro) {
-            // LIMITACAO CONHECIDA: se esta chamada falhar, o debito ja aplicado acima
-            // NAO e revertido - o dinheiro "desaparece" temporariamente. Resolver isso
-            // de forma correta e o assunto do Sprint 4 (2PC/Saga). Por enquanto, so
+            mensageria.publicar(routingKey,
+                    new CreditoRemotoMessage(idDestino, valor, vetorEnvio, agenciaProperties.getId()));
+            return ResponseEntity.ok(Map.of("mensagem",
+                    "Transferência publicada para a agência " + agenciaDestino + " (crédito assíncrono)."));
+        } catch (AmqpException erro) {
+            // LIMITACAO CONHECIDA: se a publicacao falhar (broker fora do ar), o debito
+            // ja aplicado acima NAO e revertido. O mesmo vale se o destino nao achar a
+            // conta (CREDITO_REMOTO_FALHOU): a origem nem fica sabendo. Resolver isso de
+            // forma correta e o assunto do Sprint 4 (2PC/Saga). Por enquanto, so
             // registramos a inconsistencia no log.
             registro.registrar("TRANSFERENCIA_FALHOU", relogio.eventoLocal(), Map.of(
                     "idOrigem", idOrigem,
@@ -102,32 +104,7 @@ public class TransferenciasController {
                     "valor", valor,
                     "erro", String.valueOf(erro.getMessage())));
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                    .body(Map.of("erro", "Falha ao contatar agência de destino. Débito já aplicado - inconsistência conhecida (ver Sprint 4)."));
+                    .body(Map.of("erro", "Falha ao publicar no RabbitMQ. Débito já aplicado - inconsistência conhecida (ver Sprint 4)."));
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    @PostMapping("/contas/{id}/creditar-remoto")
-    public ResponseEntity<?> creditarRemoto(@PathVariable("id") int idConta, @RequestBody Map<String, Object> corpo) throws IOException {
-        double valor = ((Number) corpo.get("valor")).doubleValue();
-        List<Number> vetorRecebido = (List<Number>) corpo.get("vetorEnvio");
-        int origemAgencia = ((Number) corpo.get("origemAgencia")).intValue();
-
-        // Ao RECEBER uma mensagem de outra agencia, o relogio vetorial faz o max
-        // posicao a posicao com o vetor recebido - e a regra 3 do algoritmo.
-        int[] ts = relogio.aoReceber(vetorRecebido.stream().mapToInt(Number::intValue).toArray());
-
-        Conta conta = contas.get(idConta);
-        if (conta == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("erro", "Conta não encontrada nesta agência."));
-        }
-        conta.setSaldo(conta.getSaldo() + valor);
-        registro.registrar("TRANSFERENCIA_CREDITO_REMOTO", ts, Map.of(
-                "idConta", idConta,
-                "valor", valor,
-                "origemAgencia", origemAgencia));
-
-        return ResponseEntity.ok(Map.of("mensagem", "Crédito remoto aplicado.", "saldoAtual", conta.getSaldo()));
     }
 }
