@@ -22,11 +22,15 @@ import org.springframework.context.annotation.Configuration;
  * Cada agencia declara a exchange (idempotente) e a PROPRIA fila. Exchange e
  * fila sao duraveis: sobrevivem a um restart do broker, e a fila continua
  * acumulando mensagens enquanto a agencia dona dela esta fora do ar.
+ *
+ * Funcionalidade adicional (Sprint 2): fila-auditoria, ligada com o curinga
+ * "agencia.#", recebe uma COPIA de toda mensagem trocada entre agencias.
  */
 @Configuration
 public class AmqpConfig {
 
     public static final String EXCHANGE = "iceibank.eventos";
+    public static final String FILA_AUDITORIA = "fila-auditoria";
 
     @Bean
     public TopicExchange iceibankEventos() {
@@ -45,9 +49,25 @@ public class AmqpConfig {
                 .with("agencia." + agenciaProperties.getId() + ".creditar");
     }
 
-    /** Serializa as mensagens como JSON (em vez da serializacao Java padrao). */
+    @Bean
+    public Queue filaAuditoria() {
+        return new Queue(FILA_AUDITORIA, true);
+    }
+
+    /** "#" casa com zero ou mais palavras: agencia.0.creditar, agencia.1.creditar, ... */
+    @Bean
+    public Binding bindingAuditoria() {
+        return BindingBuilder.bind(filaAuditoria()).to(iceibankEventos()).with("agencia.#");
+    }
+
+    /**
+     * Serializa as mensagens como JSON (em vez da serializacao Java padrao).
+     * O conversor so aceita desserializar classes do pacote messaging, mesmo
+     * quando o tipo vem do cabecalho __TypeId__ (caso do AuditoriaListener,
+     * que nao declara um tipo de parametro para o Spring inferir).
+     */
     @Bean
     public MessageConverter conversorJson() {
-        return new Jackson2JsonMessageConverter();
+        return new Jackson2JsonMessageConverter("br.pucminas.iceibank.agencia.messaging");
     }
 }
