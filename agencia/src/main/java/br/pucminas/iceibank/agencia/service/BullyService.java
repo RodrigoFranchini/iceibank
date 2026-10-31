@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -33,6 +35,9 @@ import br.pucminas.iceibank.agencia.config.AgenciaProperties;
  * se nenhuma responder, eu me torno o lider e aviso todas as outras
  * (POST /bully/coordenador). Toda chamada tem timeout de 1s: quem nao
  * responde nesse prazo e considerado fora do ar.
+ *
+ * O heartbeat consulta o lider periodicamente (GET /bully/lider); se ele nao
+ * responder, o lider e esquecido e uma nova eleicao e iniciada.
  *
  * Mesmo cuidado do RelogioVetorial: o estado e tocado por threads diferentes
  * (requisicoes HTTP do Spring e a thread da propria eleicao), entao o lider
@@ -69,16 +74,24 @@ public class BullyService {
         return thread;
     });
 
+    /** Thread unica (daemon) do heartbeat, separada da thread das eleicoes. */
+    private final ScheduledExecutorService agendadorHeartbeat = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "bully-heartbeat");
+        thread.setDaemon(true);
+        return thread;
+    });
+
     public BullyService(AgenciaProperties agenciaProperties, RelogioVetorial relogio, EventLogService eventLog) {
         this.agenciaProperties = agenciaProperties;
         this.relogio = relogio;
         this.eventLog = eventLog;
     }
 
-    /** Equivalente ao callback do app.listen: ao subir, ja dispara uma eleicao. */
+    /** Equivalente ao callback do app.listen: ao subir, ja dispara uma eleicao e liga o heartbeat. */
     @EventListener(ApplicationReadyEvent.class)
     public void aoIniciarAplicacao() {
         executorEleicao.submit(this::iniciarEleicao);
+        iniciarHeartbeat(3000);
     }
 
     public void iniciarEleicao() {
@@ -140,6 +153,47 @@ public class BullyService {
     /** Lider conhecido por esta agencia, ou null se ainda nao ha. */
     public Integer obterLiderAtual() {
         return liderAtual.get();
+    }
+
+    /** Se nao ha lider, elege; se o lider conhecido nao responde, esquece-o e elege de novo. */
+    public void verificarLider() {
+        Integer lider = liderAtual.get();
+        if (lider == null) {
+            iniciarEleicao();
+            return;
+        }
+        int meuId = agenciaProperties.getId();
+        if (lider == meuId) {
+            return;
+        }
+
+        HttpRequest requisicao = HttpRequest.newBuilder(urlDaAgencia(lider, "/bully/lider"))
+                .timeout(Duration.ofMillis(TIMEOUT_MS))
+                .GET()
+                .build();
+        if (!respondeuOk(requisicao)) {
+            Map<String, Object> detalhes = new LinkedHashMap<>();
+            detalhes.put("liderAtual", lider);
+            detalhes.put("agencia", meuId);
+            registrar("LIDER_NAO_RESPONDEU", relogio.eventoLocal(), detalhes);
+            liderAtual.set(null);
+            iniciarEleicao();
+        }
+    }
+
+    /**
+     * Agenda verificarLider com intervalo fixo ENTRE execucoes. O try/catch
+     * dentro da tarefa e obrigatorio: no ScheduledExecutorService, uma excecao
+     * nao tratada cancela silenciosamente todas as execucoes futuras.
+     */
+    public void iniciarHeartbeat(long intervaloMs) {
+        agendadorHeartbeat.scheduleWithFixedDelay(() -> {
+            try {
+                verificarLider();
+            } catch (Exception excecao) {
+                System.err.println("Falha no heartbeat do Bully: " + excecao.getMessage());
+            }
+        }, intervaloMs, intervaloMs, TimeUnit.MILLISECONDS);
     }
 
     /** POST em outra agencia; true somente se ela respondeu 2xx dentro do timeout. */
