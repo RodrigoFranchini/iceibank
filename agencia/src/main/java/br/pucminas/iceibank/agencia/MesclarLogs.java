@@ -13,6 +13,9 @@ import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import br.pucminas.iceibank.agencia.service.CompararVetores;
+import br.pucminas.iceibank.agencia.service.CompararVetores.Relacao;
+
 /**
  * Equivalente ao mesclar-logs.js do roteiro: le os .jsonl de todas as
  * agencias em data/ e monta uma unica linha do tempo, ordenada pela hora de
@@ -27,28 +30,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *   mvn spring-boot:run -Dspring-boot.run.main-class=br.pucminas.iceibank.agencia.MesclarLogs
  */
 public class MesclarLogs {
-
-    public enum Relacao { ANTES, DEPOIS, IGUAIS, CONCORRENTES }
-
-    /**
-     * Compara dois vetores posicao a posicao:
-     * - v1 <= v2 em todas as posicoes (e diferentes): v1 aconteceu ANTES de v2;
-     * - v1 >= v2 em todas as posicoes (e diferentes): v1 aconteceu DEPOIS de v2;
-     * - cada um e maior em pelo menos uma posicao: CONCORRENTES (nenhum
-     *   dos dois poderia saber do outro).
-     */
-    public static Relacao compararVetores(int[] v1, int[] v2) {
-        boolean algumMenor = false;
-        boolean algumMaior = false;
-        for (int i = 0; i < v1.length; i++) {
-            if (v1[i] < v2[i]) algumMenor = true;
-            if (v1[i] > v2[i]) algumMaior = true;
-        }
-        if (algumMenor && algumMaior) return Relacao.CONCORRENTES;
-        if (algumMenor) return Relacao.ANTES;
-        if (algumMaior) return Relacao.DEPOIS;
-        return Relacao.IGUAIS;
-    }
 
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
@@ -93,7 +74,7 @@ public class MesclarLogs {
                 Map<String, Object> b = todosEventos.get(j);
                 if (a.get("agencia").equals(b.get("agencia"))) continue;
 
-                Relacao relacao = compararVetores(vetor(a), vetor(b));
+                Relacao relacao = CompararVetores.comparar(vetor(a), vetor(b));
                 if (relacao == Relacao.CONCORRENTES) {
                     concorrentes.add(descrever(a) + "  ||  " + descrever(b));
                 } else if (relacao == Relacao.ANTES) {

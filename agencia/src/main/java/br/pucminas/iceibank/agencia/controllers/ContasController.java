@@ -1,6 +1,8 @@
 package br.pucminas.iceibank.agencia.controllers;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -14,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 import br.pucminas.iceibank.agencia.entities.Conta;
+import br.pucminas.iceibank.agencia.service.CompararVetores;
+import br.pucminas.iceibank.agencia.service.CompararVetores.Relacao;
 import br.pucminas.iceibank.agencia.service.EventLogService;
 import br.pucminas.iceibank.agencia.service.RelogioVetorial;
 import br.pucminas.iceibank.agencia.store.ContaStore;
@@ -74,7 +78,7 @@ public class ContasController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("erro", "Conta não encontrada nesta agência."));
         }
-        return ResponseEntity.ok(conta);
+        return ResponseEntity.ok(contaComVetor(conta));
     }
 
     @PostMapping("/{id}/depositar")
@@ -119,5 +123,81 @@ public class ContasController {
                 "novoSaldo", conta.getSaldo()));
 
         return ResponseEntity.ok(conta);
+    }
+
+    /**
+     * Aplica uma operacao feita offline pelo app. So aceita se o vetor que o
+     * app conhecia for igual ao atual; caso contrario outras operacoes
+     * aconteceram na agencia desde a ultima leitura do app, entao nao aplicamos
+     * as cegas: devolvemos 409 com o estado atual para o app decidir.
+     */
+    @PostMapping("/{id}/sincronizar")
+    public ResponseEntity<?> sincronizar(@PathVariable("id") int id, @RequestBody Map<String, Object> corpo) throws IOException {
+        Conta conta = contas.get(id);
+        if (conta == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("erro", "Conta não encontrada nesta agência."));
+        }
+
+        int[] vetorConhecido = lerVetor(corpo.get("vetorConhecido"));
+        if (vetorConhecido == null || vetorConhecido.length != agenciaProperties.getNumeroAgencias()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "vetorConhecido inválido."));
+        }
+
+        int[] vetorAtual = relogio.vetorAtual();
+        if (CompararVetores.comparar(vetorConhecido, vetorAtual) != Relacao.IGUAIS) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "erro", "Conflito detectado: o estado da conta mudou desde a última sincronização do app.",
+                    "vetorConhecido", vetorConhecido,
+                    "vetorAtual", vetorAtual,
+                    "contaAtual", contaComVetor(conta)));
+        }
+
+        String tipo = (String) corpo.get("tipo");
+        double valor = ((Number) corpo.get("valor")).doubleValue();
+        int[] ts;
+        if ("DEPOSITO".equals(tipo)) {
+            ts = relogio.eventoLocal();
+            conta.setSaldo(conta.getSaldo() + valor);
+        } else if ("SAQUE".equals(tipo)) {
+            if (conta.getSaldo() < valor) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("erro", "Saldo insuficiente."));
+            }
+            ts = relogio.eventoLocal();
+            conta.setSaldo(conta.getSaldo() - valor);
+        } else {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "Tipo de operação pendente não suportado."));
+        }
+
+        registro.registrar("SINCRONIZACAO_OFFLINE", ts, Map.of(
+                "id", id,
+                "tipo", tipo,
+                "valor", valor,
+                "novoSaldo", conta.getSaldo()));
+
+        return ResponseEntity.ok(contaComVetor(conta));
+    }
+
+    /** Conta + vetor atual, para o app saber a versao do estado que esta vendo. */
+    private Map<String, Object> contaComVetor(Conta conta) {
+        Map<String, Object> resposta = new LinkedHashMap<>();
+        resposta.put("id", conta.getId());
+        resposta.put("nomeAluno", conta.getNomeAluno());
+        resposta.put("saldo", conta.getSaldo());
+        resposta.put("vetorAtual", relogio.vetorAtual());
+        return resposta;
+    }
+
+    private static int[] lerVetor(Object bruto) {
+        if (!(bruto instanceof List<?> lista)) return null;
+        int[] vetor = new int[lista.size()];
+        for (int i = 0; i < vetor.length; i++) {
+            if (!(lista.get(i) instanceof Number n)) return null;
+            vetor[i] = n.intValue();
+        }
+        return vetor;
     }
 }
