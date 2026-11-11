@@ -7,6 +7,11 @@ String formatarHora(DateTime momento) {
   return '${doisDigitos(momento.hour)}:${doisDigitos(momento.minute)}:${doisDigitos(momento.second)}';
 }
 
+String formatarDataHora(DateTime momento) {
+  String doisDigitos(int n) => n.toString().padLeft(2, '0');
+  return '${doisDigitos(momento.day)}/${doisDigitos(momento.month)} ${formatarHora(momento)}';
+}
+
 /// Lança FormatException com a mensagem que vai para a tela.
 int lerId(String texto, String campo) {
   final id = int.tryParse(texto.trim());

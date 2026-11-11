@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../modelos/conta.dart';
+import '../modelos/operacao_pendente.dart';
 import 'api_excecao.dart';
 
 class ApiCliente {
@@ -55,6 +56,20 @@ class ApiCliente {
     return corpo['mensagem'] as String? ?? 'Transferência realizada.';
   }
 
+  /// Aplica uma operacao feita offline; 409 vira ConflitoExcecao com o estado real da conta.
+  Future<Conta> sincronizar(OperacaoPendente op) async {
+    try {
+      return Conta.deJson(await _enviar(agenciaDaConta(op.idConta), 'POST', '/contas/${op.idConta}/sincronizar',
+          corpo: {'tipo': op.tipo.api, 'valor': op.valor, 'vetorConhecido': op.vetorConhecido}));
+    } on ApiExcecao catch (e) {
+      final contaAtual = e.corpo['contaAtual'];
+      if (e.status == 409 && contaAtual is Map<String, dynamic>) {
+        throw ConflitoExcecao(e.mensagem, Conta.deJson(contaAtual));
+      }
+      rethrow;
+    }
+  }
+
   /// Lider que a [agencia] conhece; null quando ha eleicao em andamento.
   Future<int?> consultarLider(int agencia) async {
     final corpo = await _enviar(agencia, 'GET', '/bully/lider', autenticado: false);
@@ -97,7 +112,7 @@ class ApiCliente {
       aoExpirarSessao?.call(mensagem);
       throw SessaoExpiradaExcecao(mensagem);
     }
-    throw ApiExcecao(resposta.statusCode, mensagem);
+    throw ApiExcecao(resposta.statusCode, mensagem, dados);
   }
 
   /// O corpo e lido como UTF-8 porque as mensagens tem acento.

@@ -23,4 +23,7 @@ class Conta {
       vetorAtual: vetor?.map((v) => (v as num).toInt()).toList(),
     );
   }
+
+  Map<String, Object?> paraMapa() =>
+      {'id': id, 'nomeAluno': nomeAluno, 'saldo': saldo, 'vetorAtual': vetorAtual};
 }

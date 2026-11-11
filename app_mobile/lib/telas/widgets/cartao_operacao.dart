@@ -1,14 +1,14 @@
-// Classe criada pela IA para o formulario de deposito e saque.
+// Classe criada pela IA para o formulario de deposito e saque, que vai para a fila offline quando a agencia nao responde.
 import 'package:material_ui/material_ui.dart';
 
-import '../../servicos/api_cliente.dart';
+import '../../servicos/contas_offline.dart';
 import '../../util/formato.dart';
 import 'acao_com_retorno.dart';
 
 class CartaoOperacao extends StatefulWidget {
-  const CartaoOperacao({super.key, required this.api});
+  const CartaoOperacao({super.key, required this.contas});
 
-  final ApiCliente api;
+  final ContasOffline contas;
 
   @override
   State<CartaoOperacao> createState() => _CartaoOperacaoState();
@@ -18,15 +18,10 @@ class _CartaoOperacaoState extends State<CartaoOperacao> with AcaoComRetorno {
   final _id = TextEditingController();
   final _valor = TextEditingController();
 
-  Future<void> _depositar() => executar(() async {
-        final conta = await widget.api.depositar(lerId(_id.text, 'id de conta'), lerValor(_valor.text));
-        return 'Depósito realizado. Novo saldo: ${formatarMoeda(conta.saldo)}.';
-      });
+  Future<void> _depositar() =>
+      executar(() => widget.contas.depositar(lerId(_id.text, 'id de conta'), lerValor(_valor.text)));
 
-  Future<void> _sacar() => executar(() async {
-        final conta = await widget.api.sacar(lerId(_id.text, 'id de conta'), lerValor(_valor.text));
-        return 'Saque realizado. Novo saldo: ${formatarMoeda(conta.saldo)}.';
-      });
+  Future<void> _sacar() => executar(() => widget.contas.sacar(lerId(_id.text, 'id de conta'), lerValor(_valor.text)));
 
   @override
   void dispose() {

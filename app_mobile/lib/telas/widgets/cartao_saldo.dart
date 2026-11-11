@@ -1,15 +1,15 @@
-// Classe criada pela IA para o formulario de consulta de saldo.
+// Classe criada pela IA para o formulario de consulta de saldo, com o cache offline e o saldo provisorio.
 import 'package:material_ui/material_ui.dart';
 
-import '../../modelos/conta.dart';
-import '../../servicos/api_cliente.dart';
+import '../../servicos/contas_offline.dart';
+import '../../servicos/regras_offline.dart';
 import '../../util/formato.dart';
 import 'acao_com_retorno.dart';
 
 class CartaoSaldo extends StatefulWidget {
-  const CartaoSaldo({super.key, required this.api});
+  const CartaoSaldo({super.key, required this.contas});
 
-  final ApiCliente api;
+  final ContasOffline contas;
 
   @override
   State<CartaoSaldo> createState() => _CartaoSaldoState();
@@ -17,12 +17,16 @@ class CartaoSaldo extends StatefulWidget {
 
 class _CartaoSaldoState extends State<CartaoSaldo> with AcaoComRetorno {
   final _id = TextEditingController();
-  Conta? _conta;
+  int? _idConsultado;
+  bool _emCache = false;
 
   Future<void> _consultar() => executar(() async {
-        setState(() => _conta = null);
-        final conta = await widget.api.consultarConta(lerId(_id.text, 'id de conta'));
-        setState(() => _conta = conta);
+        setState(() => _idConsultado = null);
+        final resultado = await widget.contas.consultar(lerId(_id.text, 'id de conta'));
+        setState(() {
+          _idConsultado = resultado.conta.conta.id;
+          _emCache = resultado.emCache;
+        });
         return '';
       });
 
@@ -48,17 +52,47 @@ class _CartaoSaldoState extends State<CartaoSaldo> with AcaoComRetorno {
             ),
             const SizedBox(height: 12),
             FilledButton(onPressed: carregando ? null : _consultar, child: const Text('Consultar')),
-            if (_conta != null) ...[
-              const SizedBox(height: 12),
-              Text('Id: ${_conta!.id}'),
-              Text('Nome: ${_conta!.nomeAluno}'),
-              Text('Saldo: ${formatarMoeda(_conta!.saldo)}',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
+            // Reconstroi quando a sincronizacao atualiza o cache ou a fila.
+            if (_idConsultado != null) ListenableBuilder(listenable: widget.contas, builder: (context, _) => _dados()),
             retorno(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _dados() {
+    final cache = widget.contas.contaEmCache(_idConsultado!);
+    if (cache == null) return const SizedBox.shrink();
+    final conta = cache.conta;
+    final pendentes = widget.contas.operacoesDaConta(conta.id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        if (_emCache)
+          Text('Dados em cache de ${formatarDataHora(cache.atualizadoEm)}',
+              style: TextStyle(color: Colors.orange.shade900, fontStyle: FontStyle.italic)),
+        Text('Id: ${conta.id}'),
+        Text('Nome: ${conta.nomeAluno}'),
+        Text('Saldo: ${formatarMoeda(conta.saldo)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        if (pendentes.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Saldo provisório: ${formatarMoeda(saldoProvisorio(conta.saldo, pendentes))}',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+              Chip(
+                label: const Text('pendente de sincronização'),
+                backgroundColor: Colors.orange.shade100,
+                side: BorderSide(color: Colors.orange.shade700),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
