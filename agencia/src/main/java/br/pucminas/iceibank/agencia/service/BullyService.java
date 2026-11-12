@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,7 @@ import br.pucminas.iceibank.agencia.config.AgenciaProperties;
  * Quem inicia a eleicao pergunta (POST /bully/eleicao) a todas as agencias de
  * id maior. Se alguma responder, ela assume a eleicao e a minha parte acaba;
  * se nenhuma responder, eu me torno o lider e aviso todas as outras
- * (POST /bully/coordenador). Toda chamada tem timeout de 1s: quem nao
+ * (POST /bully/coordenador). Toda chamada tem timeout (padrao 1s): quem nao
  * responde nesse prazo e considerado fora do ar.
  *
  * O heartbeat consulta o lider periodicamente (GET /bully/lider); se ele nao
@@ -47,16 +48,19 @@ import br.pucminas.iceibank.agencia.config.AgenciaProperties;
 @Service
 public class BullyService {
 
-    /** Prazo maximo de espera por resposta de outra agencia. */
-    private static final long TIMEOUT_MS = 1000;
+    /**
+     * Funcionalidade adicional (Sprint 3): prazo de resposta e intervalo do
+     * heartbeat vem do application.properties, que le as variaveis de ambiente
+     * BULLY_TIMEOUT_MS e BULLY_HEARTBEAT_MS (padrao 1000 e 3000, como no roteiro).
+     */
+    private final long timeoutMs;
+    private final long intervaloHeartbeatMs;
 
     private final AgenciaProperties agenciaProperties;
     private final RelogioVetorial relogio;
     private final EventLogService eventLog;
 
-    private final HttpClient clienteHttp = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofMillis(TIMEOUT_MS))
-            .build();
+    private final HttpClient clienteHttp;
     private final ObjectMapper mapeadorJson = new ObjectMapper();
 
     /** null = lider ainda desconhecido. */
@@ -81,7 +85,14 @@ public class BullyService {
         return thread;
     });
 
-    public BullyService(AgenciaProperties agenciaProperties, RelogioVetorial relogio, EventLogService eventLog) {
+    public BullyService(AgenciaProperties agenciaProperties, RelogioVetorial relogio, EventLogService eventLog,
+                        @Value("${iceibank.bully.timeout-ms}") long timeoutMs,
+                        @Value("${iceibank.bully.intervalo-heartbeat-ms}") long intervaloHeartbeatMs) {
+        this.timeoutMs = timeoutMs;
+        this.intervaloHeartbeatMs = intervaloHeartbeatMs;
+        this.clienteHttp = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(timeoutMs))
+                .build();
         this.agenciaProperties = agenciaProperties;
         this.relogio = relogio;
         this.eventLog = eventLog;
@@ -91,7 +102,8 @@ public class BullyService {
     @EventListener(ApplicationReadyEvent.class)
     public void aoIniciarAplicacao() {
         executorEleicao.submit(this::iniciarEleicao);
-        iniciarHeartbeat(3000);
+        System.out.println("[Bully] timeout=" + timeoutMs + "ms, heartbeat=" + intervaloHeartbeatMs + "ms");
+        iniciarHeartbeat(intervaloHeartbeatMs);
     }
 
     public void iniciarEleicao() {
@@ -168,7 +180,7 @@ public class BullyService {
         }
 
         HttpRequest requisicao = HttpRequest.newBuilder(urlDaAgencia(lider, "/bully/lider"))
-                .timeout(Duration.ofMillis(TIMEOUT_MS))
+                .timeout(Duration.ofMillis(timeoutMs))
                 .GET()
                 .build();
         if (!respondeuOk(requisicao)) {
@@ -200,7 +212,7 @@ public class BullyService {
     private boolean postar(int idAgencia, String caminho, Map<String, Object> corpo) {
         try {
             HttpRequest requisicao = HttpRequest.newBuilder(urlDaAgencia(idAgencia, caminho))
-                    .timeout(Duration.ofMillis(TIMEOUT_MS))
+                    .timeout(Duration.ofMillis(timeoutMs))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapeadorJson.writeValueAsString(corpo)))
                     .build();
