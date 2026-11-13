@@ -6,15 +6,17 @@ Desenvolvimento de Aplicações Móveis e Distribuídas (PUC Minas).
 O banco é dividido em agências: cada agência é uma partição independente de
 contas (`id_conta % número_de_agências`). O projeto evolui em 4 sprints, cada
 uma aplicando um conceito de Sistemas Distribuídos diferente. **Este
-repositório está no Sprint 2**: comunicação indireta entre agências
-(publish/subscribe com RabbitMQ) e relógio vetorial no lugar do relógio de
-Lamport do Sprint 1.
+repositório está no Sprint 3**: as agências elegem uma líder entre si
+(algoritmo de Bully com heartbeat e failover automático) e nasce o app Flutter,
+offline-first, que usa o relógio vetorial do Sprint 2 para detectar conflito ao
+sincronizar operações feitas sem conexão.
 
 ## Stack
 
 - **Backend:** Java 21 + Spring Boot 3.5 (Maven)
 - **Mensageria:** RabbitMQ (Spring AMQP), via CloudAMQP ou Docker local
 - **Frontend:** React + TypeScript (Vite)
+- **Mobile:** Flutter (http, shared_preferences, Hive, connectivity_plus)
 - **Autenticação:** JWT (jjwt)
 
 ## RabbitMQ
@@ -86,8 +88,20 @@ Todas as rotas abaixo, exceto `/auth/login` e `/health`, exigem
 | POST | `/contas/{id}/depositar` | Depósito |
 | POST | `/contas/{id}/sacar` | Saque |
 | POST | `/transferencias` | Transferência (local ou entre agências) |
+| POST | `/contas/{id}/sincronizar` | Aplica operação feita offline pelo app (409 se o vetor mudou) |
 | GET | `/health` | Health-check público (id da agência + status) |
 | GET | `/status` | Health-check protegido (relógio vetorial + total de contas) |
+
+`GET /contas/{id}` também devolve `vetorAtual` (relógio vetorial da agência no
+momento da leitura), que o app guarda para sincronizar depois.
+
+Rotas do Bully (públicas, chamadas entre as agências e pelo app):
+
+| Método | Rota | Descrição |
+|---|---|---|
+| POST | `/bully/eleicao` | Recebe `{origemId, vetorEnvio}`; o 200 é o "OK" e a agência inicia a própria eleição |
+| POST | `/bully/coordenador` | Recebe `{liderId, vetorEnvio}` e passa a reconhecer essa líder |
+| GET | `/bully/lider` | `{idAgencia, liderAtual}` (`liderAtual` null = eleição em andamento) |
 
 A rota `/contas/{id}/creditar-remoto` do Sprint 1 foi removida: o crédito
 entre agências agora chega pela fila.
@@ -118,7 +132,51 @@ cd agencia
 mvn spring-boot:run -Dspring-boot.run.main-class=br.pucminas.iceibank.agencia.MesclarLogs
 ```
 
-## Limitações conhecidas (Sprint 2)
+## Eleição de líder (Sprint 3)
+
+Ao subir, cada agência inicia uma eleição (Bully): pergunta às agências de id
+maior; se nenhuma responder em 1s ela vira líder e anuncia a todas. A cada 3s
+o heartbeat consulta `/bully/lider` na líder; se ela não responder, a agência
+registra `LIDER_NAO_RESPONDEU` e inicia nova eleição. A líder ainda é só
+informativa (vai coordenar o 2PC no Sprint 4).
+
+Funcionalidade adicional: os dois tempos são configuráveis por variável de
+ambiente (o terminal mostra `[Bully] timeout=...ms, heartbeat=...ms` ao subir):
+
+```bash
+export BULLY_HEARTBEAT_MS=1000   # padrao 3000
+export BULLY_TIMEOUT_MS=500      # padrao 1000
+```
+
+Histórico de lideranças a partir dos logs das 3 agências:
+
+```bash
+cd agencia
+mvn spring-boot:run -Dspring-boot.run.main-class=br.pucminas.iceibank.agencia.HistoricoLideranca
+```
+
+## App mobile (Sprint 3)
+
+```bash
+cd app_mobile
+flutter pub get
+flutter run            # com um emulador Android (ou simulador iOS) aberto
+```
+
+Login `admin`/`admin123`. O campo "Host das agências" vem com `10.0.2.2` no
+emulador Android (o `localhost` do computador) e `localhost` no simulador iOS;
+a agência N responde na porta 4000 + N e cada conta é consultada na agência
+`id % 3`.
+
+- **Painel de liderança:** consulta `/bully/lider` a cada 3s, tentando as
+  outras agências se a consultada não responder.
+- **Offline-first:** saldo e `vetorAtual` de cada conta consultada ficam em
+  cache (Hive). Depósito/saque sem conexão vai para uma fila de pendentes, com
+  saldo provisório na tela, e é sincronizado sozinho (`/sincronizar`) quando a
+  conexão volta. Em conflito (409) a operação fica marcada e o app mostra o
+  saldo real com as opções Descartar e Reenviar.
+
+## Limitações conhecidas
 
 - **Débito sem compensação:** se o crédito falhar no destino
   (`CREDITO_REMOTO_FALHOU`) ou a publicação no broker falhar, o débito já
@@ -126,12 +184,18 @@ mvn spring-boot:run -Dspring-boot.run.main-class=br.pucminas.iceibank.agencia.Me
   destino. É o problema que o Sprint 4 (2PC/Saga) resolve.
 - **Estado em memória:** contas e relógio vetorial vivem em memória. Ao
   reiniciar, a agência perde as contas e o vetor volta para zero.
+- **Conflito por agência, não por conta:** qualquer evento da agência (até de
+  outra conta ou das mensagens do Bully) muda o vetor, então a sincronização
+  offline pode recusar uma operação que não tinha conflito real.
+- **Testes gravam em `data/`:** o `mvn test` sobe a aplicação, que já inicia
+  uma eleição e grava eventos em `data/eventos-agencia-0.jsonl`.
 
 ## Documentação do sprint
 
 - Respostas e justificativas de design: [`RESPOSTAS.md`](RESPOSTAS.md)
-- Evidências de teste: [`evidencias/sprint1/`](evidencias/sprint1) e
-  [`evidencias/sprint2/`](evidencias/sprint2)
+- Evidências de teste: [`evidencias/sprint1/`](evidencias/sprint1),
+  [`evidencias/sprint2/`](evidencias/sprint2) e
+  [`evidencias/sprint3/`](evidencias/sprint3)
 
 ## Nota de transparência: uso de IA
 

@@ -59,6 +59,44 @@
 
 Fila de auditoria. A fila-auditoria está ligada na exchange com o binding agencia.#, então recebe uma cópia de toda mensagem entre agências. As 3 agências consomem a mesma fila e quem pegar a mensagem grava no data/auditoria.jsonl. Escolhi por ser a mais simples e mostrar o topic exchange mandando a mesma mensagem para duas filas sem mudar quem publica. Para testar é só fazer transferências entre agências diferentes e olhar o data/auditoria.jsonl e a fila-auditoria no RabbitMQ Manager com 3 consumidores.
 
-### Uso de IA
+---
 
-Foi usada IA (Claude) para gerar parte do código, rodar os testes com RabbitMQ local e ajudar nas respostas. Os arquivos criados pela IA têm um comentário avisando. Revisei e testei tudo.
+# Sprint 3
+
+### 5.5
+
+1. O maior ID é só uma regra que todas as agências conhecem, assim ninguém precisa negociar quem vence. Se fosse o menor também funcionaria, só mudaria a líder (a agência 0), o importante é todas usarem a mesma regra.
+2. É esperado. Na subida as agências ainda não se enxergam e cada eleição recebida faz a agência iniciar a própria eleição, então o TORNOU_LIDER aparece mais de uma vez. No teste a agência 2 apareceu 4 vezes como TORNOU_LIDER e no fim as 3 responderam liderAtual 2.
+3. Para este projeto não, roda em localhost e a líder ainda é só informativa. Em um sistema real sim, qualquer um poderia ficar disparando eleições ou mandar um coordenador falso e virar líder, e no Sprint 4 a líder vai coordenar as transações.
+
+### 6.4
+
+1. Com 100ms a queda é detectada quase na hora, mas são 10 requisições por segundo por agência e uma resposta um pouco lenta já vira eleição. Com 60s quase não usa rede, mas o sistema pode ficar até 1 minuto com uma líder fora do ar sem perceber.
+2. Não é desejável. A líder pode estar no meio de uma operação, como coordenar uma transação no Sprint 4, e a troca deixa a operação pela metade. Seria melhor a agência que voltou aceitar a líder atual.
+3. A agência acha que a líder caiu sem ela ter caído, esquece a líder e começa outra eleição. Pode ficar trocando de líder sem necessidade ou ter duas agências se achando líder até a próxima rodada.
+
+### 7.3
+
+1. Na subida apareceram 4 TORNOU_LIDER, todos da agência 2, então a liderança não trocou de mãos, mas foi anunciada 4 vezes. O resultado é o mesmo, mas custa mensagens a mais na rede, eventos a mais no log e no vetor, e alguns instantes sem líder definida.
+
+### 8.3
+
+1. O app consulta a cada 3 segundos, o mesmo tempo do heartbeat das agências. Consultar mais rápido não adianta porque as agências demoram esse tempo para perceber a queda, e só gastaria bateria e rede do celular.
+2. O app mostra o que a agência que respondeu falou, então pode mostrar a líder antiga por alguns segundos. Não é um problema, na próxima consulta já corrige, e a líder ainda é só informativa.
+3. Foi reaproveitado a mesma API, o login com JWT, guardar o token e mostrar o erro que a API devolve. No mobile precisou pensar em ficar sem conexão, guardar os dados no aparelho, fila de operações pendentes e mandar cada conta para a agência dona dela (id % 3), no web era uma URL só.
+
+### 9.6
+
+1. O saldo pode voltar ao mesmo valor, um depósito de 50 e um saque de 50 por exemplo, e parecer que nada mudou. O vetor sempre aumenta a cada evento, então mostra que aconteceu alguma coisa mesmo com o saldo igual.
+2. O vetor é da agência e não da conta, qualquer evento aumenta ele, até de outra conta ou das mensagens do Bully. É mais simples porque o vetor já existia. Para ser por conta teria que guardar uma versão em cada conta e comparar só ela.
+3. Perguntar ao usuário. Descartar sozinho perde a operação sem ele saber e reenviar sozinho pode sacar de um saldo que já mudou. No app a operação fica como conflito, mostra o saldo real e os botões Descartar e Reenviar.
+
+### 10.3
+
+1. Hive, porque é simples e guarda um Map direto sem precisar de SQL. Considerei o sqflite, que precisa criar tabela, e o shared_preferences, que só guarda valores simples e já é usado para o token.
+2. A operação ficou vermelha na lista de pendentes como conflito, com a mensagem de que a conta mudou enquanto o app estava offline e o saldo real, e o saldo da tela foi atualizado com o valor da agência. Escolhi deixar o usuário decidir entre Descartar e Reenviar, porque num banco reaplicar sozinho pode deixar a conta negativa.
+3. O usuário pode achar que o dinheiro já entrou ou saiu e depois a operação ser recusada, por exemplo sacar contando com um depósito que ainda não foi aplicado. O app mostra o saldo provisório separado com o aviso de pendente e não deixa sacar offline mais que o saldo provisório.
+
+### Funcionalidade adicional
+
+Timeout configurável. O intervalo do heartbeat e o timeout das chamadas do Bully saem do código e vêm das variáveis de ambiente BULLY_HEARTBEAT_MS e BULLY_TIMEOUT_MS (padrão 3000 e 1000, igual ao roteiro). Escolhi por ser a mais simples e ajudar a ver o trade-off da pergunta 6.4. Para testar é só subir as agências com BULLY_HEARTBEAT_MS=1000 e BULLY_TIMEOUT_MS=500, conferir a linha [Bully] timeout=500ms, heartbeat=1000ms no terminal e derrubar a líder, a nova líder aparece mais rápido.
