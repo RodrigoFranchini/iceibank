@@ -47,9 +47,12 @@ public class ContasController {
         String nomeAluno = (String) corpo.get("nomeAluno");
         double saldoInicial = corpo.get("saldoInicial") != null ? ((Number) corpo.get("saldoInicial")).doubleValue() : 0;
 
-        if (agenciaProperties.agenciaResponsavel(id) != agenciaProperties.getId()) {
+        int agenciaCorreta = agenciaProperties.agenciaResponsavel(id);
+        if (agenciaCorreta != agenciaProperties.getId()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("erro", "Conta " + id + " não pertence a esta agência."));
+                    .body(Map.of("erro", "Conta " + id + " não pertence à agência " + agenciaProperties.getId()
+                            + ". Ela deve ser criada na agência " + agenciaCorreta
+                            + " (porta " + agenciaProperties.portaDaAgencia(agenciaCorreta) + ")."));
         }
         if (contas.containsKey(id)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)

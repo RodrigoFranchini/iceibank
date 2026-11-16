@@ -47,13 +47,23 @@ export default function App() {
   }
 
   async function chamarApi<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
-    const resposta = await fetch(`${agenciaUrl}${caminho}`, {
-      ...opcoes,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
+    let resposta: Response;
+    try {
+      resposta = await fetch(`${agenciaUrl}${caminho}`, {
+        ...opcoes,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+    } catch {
+      // O navegador so diz "Load failed"/"Failed to fetch": agencia fora do ar ou
+      // 401 do filtro JWT sem cabecalho CORS (token expirado).
+      throw new Error(
+        `Não foi possível falar com a agência em ${agenciaUrl}. Confira se ela está no ar; ` +
+          "se estiver, a sessão pode ter expirado: clique em Sair e entre de novo.",
+      );
+    }
     const corpo = await resposta.json().catch(() => null);
     if (!resposta.ok) {
       if (resposta.status === 401) {
